@@ -1,0 +1,20 @@
+# Auto-detect text files and normalize line endings
+* text=auto
+
+# Python source
+*.py text diff=python
+
+# Markdown
+*.md text
+
+# Config files
+*.txt text
+*.cfg text
+*.ini text
+*.yml text
+*.yaml text
+
+# Binary files
+*.ico binary
+*.png binary
+*.jpg binary
