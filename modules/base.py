@@ -9,7 +9,7 @@ class OSINTModule:
         self.results = {}
         self.status = "idle"
 
-    def scan(self, target):
+    def scan(self, target, progress_callback=None):
         self.results = {}
         self.status = "scanning"
 
@@ -17,10 +17,17 @@ class OSINTModule:
         return self.results
 
     def get_summary(self):
-        total = sum(len(v) for v in self.results.values())
-        found = sum(1 for v in self.results.values() if any(
-            isinstance(i, dict) and i.get("found") for i in (v if isinstance(v, list) else [v])
-        ))
+        total = sum(len(v) if isinstance(v, (list, dict)) else 1 for v in self.results.values())
+        found = 0
+        for v in self.results.values():
+            if isinstance(v, list):
+                for item in v:
+                    if isinstance(item, dict) and item.get("found"):
+                        found += 1
+            elif isinstance(v, dict):
+                for k2, v2 in v.items():
+                    if isinstance(v2, str) and "found" in v2.lower():
+                        found += 1
         return {"total": total, "found": found}
 
     def get_results_flat(self):
@@ -46,3 +53,12 @@ class OSINTModule:
                 flat.append(("  Data", str(items)))
             flat.append(("", ""))
         return flat
+
+
+class ModuleMeta:
+    def __init__(self, name, icon, description, module_class, inputs):
+        self.name = name
+        self.icon = icon
+        self.description = description
+        self.module_class = module_class
+        self.inputs = inputs

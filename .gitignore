@@ -28,3 +28,8 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Cache
+.cache/
+sessions/
+.apikeys.json
