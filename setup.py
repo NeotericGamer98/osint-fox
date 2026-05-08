@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="osint-fox",
-    version="1.1.0",
+    version="1.2.0",
     description="OSINT FOX - Open Source Intelligence Tool with GUI",
     author="OSINT FOX",
     url="https://github.com/NeotericGamer98/osint-fox",

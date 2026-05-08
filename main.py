@@ -10,7 +10,7 @@ def cli_mode():
     from utils.exporter import EXPORT_FORMATS
 
     parser = argparse.ArgumentParser(
-        description="OSINT FOX v1.1 - Open Source Intelligence Tool",
+        description="OSINT FOX v1.2 - Open Source Intelligence Tool",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

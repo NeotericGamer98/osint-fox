@@ -76,17 +76,13 @@ class ImageModule(OSINTModule):
 
         try:
             from PIL import Image
-            import io as _io
-            img = Image.open(_io.BytesIO(img_data))
+            img = Image.open(io.BytesIO(img_data))
             info["Format"] = img.format or "Unknown"
             info["Dimensions"] = f"{img.size[0]}x{img.size[1]}"
             info["Mode"] = img.mode
-            info["Width"] = str(img.size[0])
-            info["Height"] = str(img.size[1])
-            if hasattr(img, "info"):
-                dpi = img.info.get("dpi")
-                if dpi:
-                    info["DPI"] = f"{dpi[0]}x{dpi[1]}"
+            if hasattr(img, "info") and "dpi" in img.info:
+                dpi = img.info["dpi"]
+                info["DPI"] = f"{dpi[0]}x{dpi[1]}"
         except ImportError:
             info["Note"] = "Install Pillow for detailed image metadata"
         except Exception:
@@ -97,8 +93,7 @@ class ImageModule(OSINTModule):
     def _exif_analysis(self, img_data):
         try:
             from PIL import Image, ExifTags
-            import io as _io
-            img = Image.open(_io.BytesIO(img_data))
+            img = Image.open(io.BytesIO(img_data))
             exif = img.getexif()
             if not exif:
                 self.results["EXIF Data"] = {"Status": "No EXIF data found"}
@@ -124,9 +119,11 @@ class ImageModule(OSINTModule):
 
             if "GPSInfo" in exif_data:
                 try:
-                    gps = self._parse_gps(exif.get(2))
-                    if gps:
-                        found["GPS Coordinates"] = gps
+                    gps_ifd = exif.get_ifd(0x8825)
+                    if gps_ifd:
+                        gps_str = self._parse_gps(gps_ifd)
+                        if gps_str:
+                            found["GPS Coordinates"] = gps_str
                 except Exception:
                     pass
 
@@ -144,23 +141,26 @@ class ImageModule(OSINTModule):
     def _parse_gps(self, gps_ifd):
         try:
             from PIL.ExifTags import GPSTAGS
-            gps = {}
-            for tag_id, value in gps_ifd.items():
-                tag = GPSTAGS.get(tag_id, tag_id)
-                gps[tag] = value
 
-            def to_decimal(dms, ref):
+            def to_deg(value, ref):
                 try:
-                    d, m, s = dms
-                    dec = float(d) + float(m) / 60.0 + float(s) / 3600.0
+                    d, m, s = [float(x) for x in value]
+                    dec = d + m / 60.0 + s / 3600.0
                     if ref in ("S", "W"):
                         dec = -dec
                     return round(dec, 6)
                 except Exception:
                     return None
 
-            lat = to_decimal(gps.get("GPSLatitude"), gps.get("GPSLatitudeRef", "N"))
-            lon = to_decimal(gps.get("GPSLongitude"), gps.get("GPSLongitudeRef", "E"))
+            lat = None
+            lon = None
+            for tag_id, value in gps_ifd.items():
+                name = GPSTAGS.get(tag_id, str(tag_id))
+                if name == "GPSLatitude":
+                    lat = to_deg(value, gps_ifd.get(1, "N"))
+                elif name == "GPSLongitude":
+                    lon = to_deg(value, gps_ifd.get(3, "E"))
+
             if lat and lon:
                 return f"{lat}, {lon}"
         except Exception:
@@ -171,34 +171,25 @@ class ImageModule(OSINTModule):
         hashes = {}
         try:
             from PIL import Image
-            import io as _io
-            img = Image.open(_io.BytesIO(img_data))
+            img = Image.open(io.BytesIO(img_data))
 
-            # Average hash
             small = img.resize((8, 8)).convert("L")
             pixels = list(small.getdata())
             avg = sum(pixels) / len(pixels)
             ahash = "".join("1" if p > avg else "0" for p in pixels)
-            hashes["Average Hash (aHash)"] = ahash
             hashes["aHash (hex)"] = hex(int(ahash, 2))[2:].zfill(16)
 
-            # Difference hash
             small = img.resize((9, 8)).convert("L")
             pixels = list(small.getdata())
-            dhash = "".join("1" if pixels[i] > pixels[i + 1] else "0"
-                            for i in range(0, 64, 1))
-            hashes["Difference Hash (dHash)"] = dhash
+            dhash = "".join("1" if pixels[i] > pixels[i + 1] else "0" for i in range(0, 64))
             hashes["dHash (hex)"] = hex(int(dhash, 2))[2:].zfill(16)
 
-            # Perceptual hash
-            from PIL import ImageFilter
             small = img.resize((32, 32)).convert("L")
-            from PIL import ImageFilter as IF
-            small = small.filter(IF.FIND_EDGES)
+            from PIL import ImageFilter
+            small = small.filter(ImageFilter.FIND_EDGES)
             pixels = list(small.getdata())
             avg = sum(pixels) / len(pixels)
             phash = "".join("1" if p > avg else "0" for p in pixels)
-            hashes["Perceptual Hash (pHash)"] = phash[:64]
             hashes["pHash (hex)"] = hex(int(phash[:64], 2))[2:].zfill(16)
 
         except ImportError:
@@ -209,12 +200,12 @@ class ImageModule(OSINTModule):
         self.results["Image Hashes"] = hashes
 
     def _reverse_search_urls(self, source):
-        urls = {}
         if source.startswith(("http://", "https://")):
             encoded = __import__("urllib").parse.quote(source)
-            urls["Google Images"] = f"https://images.google.com/searchbyimage?image_url={encoded}"
-            urls["TinEye"] = f"https://www.tineye.com/search?url={encoded}"
-            urls["Yandex"] = f"https://yandex.com/images/search?rpt=imagelike&url={encoded}"
-            urls["Bing"] = f"https://www.bing.com/images/search?q=imgurl:{encoded}"
-            urls["SauceNAO"] = f"https://saucenao.com/search.php?url={encoded}"
-            self.results["Reverse Image Search URLs"] = urls
+            self.results["Reverse Image Search URLs"] = {
+                "Google Images": f"https://images.google.com/searchbyimage?image_url={encoded}",
+                "TinEye": f"https://www.tineye.com/search?url={encoded}",
+                "Yandex": f"https://yandex.com/images/search?rpt=imagelike&url={encoded}",
+                "Bing": f"https://www.bing.com/images/search?q=imgurl:{encoded}",
+                "SauceNAO": f"https://saucenao.com/search.php?url={encoded}",
+            }

@@ -50,7 +50,6 @@ class SocialModule(OSINTModule):
             for p in profile_platforms[:20]:
                 future = ex.submit(self._fetch_bio, username, p)
                 future_map[future] = p
-
             for future in concurrent.futures.as_completed(future_map):
                 result = future.result()
                 if result:
@@ -59,7 +58,6 @@ class SocialModule(OSINTModule):
                 if progress_callback:
                     progress_callback(f"Analyzing platform {checked}/{len(profile_platforms[:20])}...",
                                       0.1 + 0.4 * (checked / len(profile_platforms[:20])))
-
         return bios
 
     def _fetch_bio(self, username, platform):
@@ -81,10 +79,8 @@ class SocialModule(OSINTModule):
         return None
 
     def _extract_bio(self, html):
-        import re
         if not html:
             return ""
-        # Try meta description
         m = re.search(r'<meta[^>]+name="description"[^>]+content="([^"]+)"', html, re.I)
         if m:
             return m.group(1)
@@ -98,20 +94,23 @@ class SocialModule(OSINTModule):
             self.results["Bio Consistency"] = {"Status": "No profiles found to analyze"}
             return
 
-        names = set()
-        locations = set()
-        emails = set()
-        urls = set()
         profiles_found = []
-
+        name_candidates = {}
         for b in bios:
             profiles_found.append(b["platform"])
-            if b.get("bio_snippet"):
-                pass
+            snippet = b.get("bio_snippet", "")
+            if snippet:
+                words = snippet.split()
+                for w in words:
+                    if w[0].isupper() and len(w) > 2 and w.lower() != username.lower():
+                        name_candidates[w] = name_candidates.get(w, 0) + 1
 
+        common_names = [n for n, c in name_candidates.items() if c > 1]
         self.results["Bio Consistency"] = {
             "Profiles Found": ", ".join(profiles_found),
             "Total Platforms": str(len(profiles_found)),
+            "Common Name Candidates": ", ".join(common_names[:5]) if common_names else "None detected",
+            "Note": "Names appearing across multiple platforms may be the real name",
         }
 
     def _compare_metadata(self, bios):
@@ -120,9 +119,7 @@ class SocialModule(OSINTModule):
         categories = {}
         for b in bios:
             cat = b.get("category", "Other")
-            if cat not in categories:
-                categories[cat] = []
-            categories[cat].append(b["platform"])
+            categories.setdefault(cat, []).append(b["platform"])
         self.results["Category Distribution"] = {
             cat: ", ".join(plats) for cat, plats in categories.items()
         }
